@@ -18,12 +18,12 @@ export async function PUT(req: NextRequest) {
     const user = await prisma.user.update({
       where: { id: userId },
       data: { quotaIzin: quota },
-      select: { id: true, name: true, email: true, quotaIzin: true }
+      select: { id: true, nama: true, email: true, quotaIzin: true }  // ← nama, BUKAN name
     });
 
     return NextResponse.json({ 
       success: true, 
-      message: `Jatah izin ${user.name} berhasil diupdate menjadi ${quota} kali per bulan`,
+      message: `Jatah izin ${user.nama} berhasil diupdate menjadi ${quota} kali per bulan`,
       data: user 
     });
   } catch (error) {
