@@ -68,12 +68,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // Optional: Update semua user yang memiliki quota null dengan nilai default
-    const defaultQuota = parseInt(body.quota_izin_default || '3');
-    await prisma.user.updateMany({
-      where: { quotaIzin: { equals: null } },  // ← PERBAIKAN DI SINI
-      data: { quotaIzin: defaultQuota }
-    });
+    // HAPUS BLOK INI - karena quotaIzin tidak pernah null
+    // const defaultQuota = parseInt(body.quota_izin_default || '3');
+    // await prisma.user.updateMany({
+    //   where: { quotaIzin: { equals: null } },
+    //   data: { quotaIzin: defaultQuota }
+    // });
 
     return NextResponse.json({ 
       success: true, 
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         jam_keluar: body.jam_keluar,
         toleransi_terlambat: body.toleransi_terlambat,
         radius_absen: body.radius_absen,
-        quota_izin_default: defaultQuota
+        quota_izin_default: parseInt(body.quota_izin_default || '3')
       }
     });
   } catch (error) {
@@ -122,14 +122,14 @@ export async function PUT(request: Request) {
       create: { key, value, description: `Pengaturan untuk ${key}` }
     });
 
-    // Jika update quota_izin_default, update user yang memiliki quota null
-    if (key === 'quota_izin_default') {
-      const defaultQuota = parseInt(value);
-      await prisma.user.updateMany({
-        where: { quotaIzin: { equals: null } },  // ← PERBAIKAN DI SINI
-        data: { quotaIzin: defaultQuota }
-      });
-    }
+    // HAPUS BLOK INI - karena quotaIzin tidak pernah null
+    // if (key === 'quota_izin_default') {
+    //   const defaultQuota = parseInt(value);
+    //   await prisma.user.updateMany({
+    //     where: { quotaIzin: { equals: null } },
+    //     data: { quotaIzin: defaultQuota }
+    //   });
+    // }
 
     return NextResponse.json({ 
       success: true, 
