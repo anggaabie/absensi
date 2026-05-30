@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Jatah izin ${user.name} berhasil diupdate menjadi ${quota} kali per bulan`,
+      message: `Jatah izin ${user.nama} berhasil diupdate menjadi ${quota} kali per bulan`,
       data: user 
     });
   } catch (error) {
