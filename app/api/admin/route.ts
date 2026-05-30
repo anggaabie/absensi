@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest) {
     const user = await prisma.user.update({
       where: { id: userId },
       data: { quotaIzin: quota },
-      select: { id: true, nama: true, email: true, quotaIzin: true }
+      select: { id: true, nama: true, email: true, quotaIzin: true }  // ← PASTIKAN 'nama' BUKAN 'name'
     });
 
     return NextResponse.json({ 
