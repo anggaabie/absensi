@@ -27,7 +27,7 @@ export async function GET() {
       lokasi_kantor_lat: settingsMap.lokasi_kantor_lat || process.env.NEXT_PUBLIC_KANTOR_LAT || '-7.370758',
       lokasi_kantor_lng: settingsMap.lokasi_kantor_lng || process.env.NEXT_PUBLIC_KANTOR_LNG || '108.248837',
       radius_absen: settingsMap.radius_absen || '10',
-      quota_izin_default: settingsMap.quota_izin_default || '3'  // <-- TAMBAHKAN INI
+      quota_izin_default: settingsMap.quota_izin_default || '3'
     };
 
     return NextResponse.json(defaultSettings);
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       { key: 'lokasi_kantor_lat', value: body.lokasi_kantor_lat, description: 'Latitude lokasi kantor' },
       { key: 'lokasi_kantor_lng', value: body.lokasi_kantor_lng, description: 'Longitude lokasi kantor' },
       { key: 'radius_absen', value: body.radius_absen, description: 'Radius absen (meter)' },
-      { key: 'quota_izin_default', value: body.quota_izin_default || '3', description: 'Jatah izin default per bulan untuk karyawan baru' }  // <-- TAMBAHKAN INI
+      { key: 'quota_izin_default', value: body.quota_izin_default || '3', description: 'Jatah izin default per bulan untuk karyawan baru' }
     ];
 
     // Upsert (update jika ada, create jika belum ada) setiap setting
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     // Optional: Update semua user yang memiliki quota null dengan nilai default
     const defaultQuota = parseInt(body.quota_izin_default || '3');
     await prisma.user.updateMany({
-      where: { quotaIzin: null },
+      where: { quotaIzin: { equals: null } },  // ← PERBAIKAN DI SINI
       data: { quotaIzin: defaultQuota }
     });
 
@@ -126,7 +126,7 @@ export async function PUT(request: Request) {
     if (key === 'quota_izin_default') {
       const defaultQuota = parseInt(value);
       await prisma.user.updateMany({
-        where: { quotaIzin: null },
+        where: { quotaIzin: { equals: null } },  // ← PERBAIKAN DI SINI
         data: { quotaIzin: defaultQuota }
       });
     }
