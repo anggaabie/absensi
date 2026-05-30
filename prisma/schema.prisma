@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model User {
+  id             String   @id @default(uuid())
+  nama           String
+  email          String   @unique
+  password       String
+  role           Role     @default(karyawan)
+  faceDescriptor Json?
+  profileImage   String?  @map("profile_image") @db.LongText
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  quotaIzin      Int      @default(3) @map("quota_izin")
+  absensi        Absen[]
+  izin           Izin[]
+
+  @@map("users")
+}
+
+model Absen {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  timestamp DateTime @default(now())
+  latitude  Float
+  longitude Float
+  status    Status   @default(hadir)
+  imageUrl  String?  @db.Text
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+  @@map("absensi")
+}
+
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@map("settings")
+}
+
+model Notification {
+  id        String                @id @default(uuid())
+  title     String
+  message   String                @db.Text
+  type      NotifType             @default(info)
+  target    String
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+  receipts  NotificationReceipt[]
+
+  @@map("notifications")
+}
+
+model NotificationReceipt {
+  id             String       @id @default(uuid())
+  notificationId String       @map("notification_id")
+  userId         String       @map("user_id")
+  isRead         Boolean      @default(false) @map("is_read")
+  readAt         DateTime?    @map("read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+  @@index([notificationId])
+  @@map("notification_receipts")
+}
+
+model Article {
+  id          String   @id @default(uuid())
+  title       String
+  content     String   @db.Text
+  author      String
+  imageUrl    String?  @map("image_url") @db.Text
+  category    String   @default("umum")
+  publishedAt DateTime @default(now()) @map("published_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("articles")
+}
+
+model Izin {
+  id            String     @id @default(uuid())
+  userId        String     @map("user_id")
+  userName      String     @map("user_name")
+  tanggal       DateTime
+  alasan        String     @db.Text
+  status        IzinStatus @default(pending)
+  keterangan    String?    @db.Text
+  diajukanPada  DateTime   @default(now()) @map("diajukan_pada")
+  disetujuiPada DateTime?  @map("disetujui_pada")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("izin")
+}
+
+enum Role {
+  admin
+  karyawan
+}
+
+enum Status {
+  hadir
+  terlambat
+}
+
+enum NotifType {
+  info
+  warning
+  success
+}
+
+enum IzinStatus {
+  pending
+  disetujui
+  ditolak
+}
