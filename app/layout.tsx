@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import ServiceWorkerRegister from './components/ServiceWorkerRegister';
 
 export const metadata: Metadata = {
   title: 'AbsenEase',
@@ -29,7 +30,10 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icons/icon.svg" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegister />
+      </body>
     </html>
   );
 }

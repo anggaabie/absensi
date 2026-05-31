@@ -66,10 +66,49 @@ export default function Home() {
   // State untuk jatah izin (quota)
   const [quota, setQuota] = useState({ quota: 3, used: 0, remaining: 3, canApply: true });
   
+  // [PUSH NOTIFICATION] State untuk menandai sudah minta izin
+  const [pushPermissionRequested, setPushPermissionRequested] = useState(false);
+  
   // Refs
   const webcamRef = useRef<Webcam>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+
+  // ==================== FUNGSI JAM KERJA ====================
+const isWithinWorkingHours = () => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  
+  const [startHour, startMinute] = settings.jamMasuk.split(':').map(Number);
+  const [endHour, endMinute] = settings.jamKeluar.split(':').map(Number);
+  
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  const startTotalMinutes = startHour * 60 + startMinute;
+  const endTotalMinutes = endHour * 60 + endMinute;
+  
+  return currentTotalMinutes >= startTotalMinutes && currentTotalMinutes <= endTotalMinutes;
+};
+
+const isAbsenEnabled = () => {
+  // Jika sudah absen hari ini, nonaktifkan
+  if (todayStatus.sudahAbsen) return false;
+  // Jika di luar jam kerja, nonaktifkan
+  if (!isWithinWorkingHours()) return false;
+  return true;
+};
+
+const getAbsenButtonMessage = () => {
+  if (todayStatus.sudahAbsen) {
+    return `Anda sudah melakukan absen hari ini pukul ${todayStatus.waktu}`;
+  }
+  if (!isWithinWorkingHours()) {
+    return `Jam absen: ${settings.jamMasuk} - ${settings.jamKeluar}. Silakan absen pada jam kerja.`;
+  }
+  return null;
+};
+// ==================== AKHIR FUNGSI JAM KERJA ====================
 
   const getGreeting = () => {
     const now = new Date();
@@ -147,6 +186,34 @@ export default function Home() {
     }
   };
 
+  // [PUSH NOTIFICATION] Fungsi untuk setup push notification
+  const setupPushNotifications = async () => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      console.log('Push notifications not supported');
+      return;
+    }
+    
+    const permission = Notification.permission;
+    
+    if (permission === 'default' && !pushPermissionRequested) {
+      setPushPermissionRequested(true);
+      console.log('Requesting notification permission...');
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        console.log('Notification permission granted');
+        await subscribeToPushNotifications();
+        showToast('Notifikasi push diaktifkan!', 'success');
+      } else {
+        console.log('Notification permission denied');
+      }
+    } else if (permission === 'granted') {
+      console.log('Notification already granted, subscribing...');
+      await subscribeToPushNotifications();
+    } else {
+      console.log('Notification permission denied permanently');
+    }
+  };
+
   useEffect(() => {
     const nama = localStorage.getItem('userName') || '';
     const email = localStorage.getItem('userEmail') || '';
@@ -166,6 +233,14 @@ export default function Home() {
     startRealtimeLocationCheck();
     
     const interval = setInterval(updateDateTime, 1000);
+    
+    // [PUSH NOTIFICATION] Setup push notification setelah user login
+    if (nama && email) {
+      setTimeout(() => {
+        setupPushNotifications();
+      }, 3000);
+    }
+    
     return () => {
       clearInterval(interval);
       if (locationIntervalRef.current) {
@@ -690,6 +765,73 @@ export default function Home() {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   };
+
+  // [PUSH NOTIFICATION] Fungsi subscribe ke push notifications (UPDATED)
+  const subscribeToPushNotifications = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.log('Push notifications not supported');
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      
+      if (!vapidPublicKey) {
+        console.log('VAPID public key not configured');
+        return;
+      }
+
+      // Cek apakah sudah subscribe
+      const existingSubscription = await registration.pushManager.getSubscription();
+      if (existingSubscription) {
+        console.log('Already subscribed to push notifications');
+        return;
+      }
+
+      const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+      
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey
+      });
+
+      // Kirim subscription ke server dengan user email
+      const userEmail = localStorage.getItem('userEmail') || '';
+      
+      const response = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          subscription,
+          userId: userEmail 
+        })
+      });
+
+      if (response.ok) {
+        console.log('Push notification subscribed successfully');
+      } else {
+        console.log('Failed to subscribe on server');
+      }
+    } catch (error) {
+      console.error('Error subscribing to push notifications:', error);
+    }
+  };
+
+  // Fungsi helper untuk konversi base64
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
 
   // ==================== MODAL COMPONENTS ====================
 
@@ -1696,22 +1838,118 @@ export default function Home() {
                 </div>
               )}
 
+  
               {/* Absen Button */}
-              <div className="absen-wrap" style={{ padding: '0 20px 16px' }}>
-                <button onClick={handleAbsen} className="absen-btn" style={{ width: '100%', background: '#3B82F6', borderRadius: '20px', padding: '16px', display: 'flex', alignItems: 'center', gap: '10px', border: 'none', cursor: 'pointer', position: 'relative', overflow: 'hidden', transition: 'transform 0.15s', boxShadow: '0 8px 24px rgba(59,130,246,0.35)' }}>
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,255,255,0.1),transparent)' }}></div>
-                  <div className="absen-icon" style={{ width: '36px', height: '36px', background: 'rgba(255,255,255,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  </div>
-                  <div className="absen-label" style={{ flex: 1 }}>
-                    <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff', letterSpacing: '-0.2px' }}>Absen Masuk</p>
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>Verifikasi wajah diperlukan</span>
-                  </div>
-                  <div className="absen-arrow" style={{ width: '32px', height: '32px', background: 'rgba(255,255,255,0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                  </div>
-                </button>
-              </div>
+{/* Absen Button */}
+<div className="absen-wrap" style={{ padding: '0 20px 16px' }}>
+  {isAbsenEnabled() ? (
+    <button 
+      onClick={handleAbsen} 
+      className="absen-btn" 
+      style={{ 
+        width: '100%', 
+        background: '#3B82F6', 
+        borderRadius: '20px', 
+        padding: '16px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '10px', 
+        border: 'none', 
+        cursor: 'pointer', 
+        position: 'relative', 
+        overflow: 'hidden', 
+        transition: 'transform 0.15s', 
+        boxShadow: '0 8px 24px rgba(59,130,246,0.35)' 
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg,rgba(255,255,255,0.1),transparent)' }}></div>
+      <div className="absen-icon" style={{ width: '36px', height: '36px', background: 'rgba(255,255,255,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <div className="absen-label" style={{ flex: 1 }}>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff', letterSpacing: '-0.2px' }}>Absen Masuk</p>
+        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>Verifikasi wajah diperlukan</span>
+      </div>
+      <div className="absen-arrow" style={{ width: '32px', height: '32px', background: 'rgba(255,255,255,0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </button>
+  ) : (
+    <button 
+      disabled 
+      className="absen-btn-disabled" 
+      style={{ 
+        width: '100%', 
+        background: '#94A3B8', 
+        borderRadius: '20px', 
+        padding: '16px', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '10px', 
+        border: 'none', 
+        cursor: 'not-allowed', 
+        position: 'relative', 
+        overflow: 'hidden', 
+        opacity: 0.7 
+      }}
+      title={getAbsenButtonMessage() || 'Tidak dapat melakukan absen'}
+    >
+      <div className="absen-icon" style={{ width: '36px', height: '36px', background: 'rgba(255,255,255,0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </div>
+      <div className="absen-label" style={{ flex: 1, textAlign: 'left' }}>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: '#fff', letterSpacing: '-0.2px' }}>Absen Masuk</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+          {todayStatus.sudahAbsen ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          )}
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+            {todayStatus.sudahAbsen ? 'Sudah absen hari ini' : `Jam kerja: ${settings.jamMasuk} - ${settings.jamKeluar}`}
+          </span>
+        </div>
+      </div>
+      <div className="absen-arrow" style={{ width: '32px', height: '32px', background: 'rgba(255,255,255,0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </button>
+  )}
+  
+  {/* Pesan tambahan jika tombol disabled (dengan SVG) */}
+  {!isAbsenEnabled() && getAbsenButtonMessage() && (
+    <div style={{ 
+      marginTop: '8px', 
+      fontSize: '11px', 
+      textAlign: 'center',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '6px',
+      color: todayStatus.sudahAbsen ? '#10B981' : '#F59E0B',
+      background: todayStatus.sudahAbsen ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+      padding: '8px 12px',
+      borderRadius: '12px'
+    }}>
+      {todayStatus.sudahAbsen ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      )}
+      <span>{getAbsenButtonMessage()}</span>
+    </div>
+  )}
+</div>
 
               {/* Camera Section */}
               {showCamera && (
@@ -2165,7 +2403,7 @@ export default function Home() {
                 <p style={{ fontSize: '11px', color: '#94A3B8', textAlign: 'center' }}>
                   Pengajuan izin akan diproses oleh admin dalam waktu maksimal 1x24 jam
                 </p>
-              </div>
+</div>
             </div>
           </div>
         </div>
